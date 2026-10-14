@@ -1,0 +1,31 @@
+/vivado/*
+!/vivado/.gitkeep
+.Xil/
+*.jou
+*.log
+*.str
+*.wdb
+*.vcd
+*.pb
+xsim.dir/
+*.cache/
+*.runs/
+*.sim/
+*.hw/
+*.ip_user_files/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local generated results; promote selected evidence into docs/
+/results/*
+!/results/.gitkeep
+
+# Editor and OS files
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
