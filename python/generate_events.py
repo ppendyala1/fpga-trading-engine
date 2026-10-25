@@ -37,10 +37,7 @@ def generate_trace(
                 order_id=next_id,
                 quantity=rng.randint(1, 1000),
                 side=rng.choice(("B", "S")),
-                price=(
-                    cfg.base_price
-                    + rng.randrange(cfg.price_levels) * cfg.tick_size
-                ),
+                price=(cfg.base_price + rng.randrange(cfg.price_levels) * cfg.tick_size)
             )
 
             next_id += 1

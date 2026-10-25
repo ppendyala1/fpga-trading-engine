@@ -60,4 +60,20 @@ package trading_types_pkg;
         level_quantity_t ask_quantity;
     } bbo_t;
 
+    typedef enum logic [1:0] {
+        LOOKUP_FIND   = 2'd0,
+        LOOKUP_INSERT = 2'd1,
+        LOOKUP_REMOVE = 2'd2
+    } lookup_cmd_t;
+
+    typedef enum logic [3:0] {
+        BOOK_OK            = 4'd0,
+        BOOK_BAD_EVENT     = 4'd1,
+        BOOK_DUPLICATE_ID  = 4'd2,
+        BOOK_UNKNOWN_ID    = 4'd3,
+        BOOK_FULL          = 4'd4,
+        BOOK_BAD_QUANTITY  = 4'd5,
+        BOOK_INTERNAL_ERROR = 4'd6
+    } book_error_t;
+
 endpackage : trading_types_pkg

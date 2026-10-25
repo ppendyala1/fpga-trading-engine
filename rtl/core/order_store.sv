@@ -22,7 +22,6 @@ module order_store #(
     localparam int unsigned ADDR_WIDTH = $clog2(DEPTH);
     localparam int unsigned DATA_WIDTH = $bits(order_record_t);
 
-    // Synchronous memory access permits block RAM inference.
     (* ram_style = "block" *)
     logic [DATA_WIDTH-1:0] memory [0:DEPTH-1];
 

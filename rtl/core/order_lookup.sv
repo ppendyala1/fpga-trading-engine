@@ -22,7 +22,7 @@ module order_lookup #(
 
     localparam int unsigned ADDR_WIDTH = $clog2(DEPTH);
 
-    // Each table entry corresponds directly to an order-memory slot.
+    // Each  entry corresponds directly to an order-memory slot.
     order_id_t order_ids [0:DEPTH-1];
     logic [DEPTH-1:0] slot_valid;
 
