@@ -1,5 +1,4 @@
-/vivado/*
-!/vivado/.gitkeep
+/build/
 .Xil/
 *.jou
 *.log
@@ -20,9 +19,7 @@ __pycache__/
 .venv/
 venv/
 
-# Local generated results; promote selected evidence into docs/
-/results/*
-!/results/.gitkeep
+# All generated projects, reports, vectors and captures live in build/.
 
 # Editor and OS files
 .vscode/
