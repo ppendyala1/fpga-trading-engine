@@ -28,6 +28,8 @@ module order_lookup #(
 
     logic match_found;
     logic [ADDR_WIDTH-1:0] match_slot;
+    logic [DEPTH-1:0] hit_vector;
+    priority_encoder #(.WIDTH(DEPTH)) select_match(.bits_in(hit_vector),.found(match_found),.index(match_slot));
 
     // synthesis translate_off
     initial begin
@@ -38,17 +40,8 @@ module order_lookup #(
 
     // Compare the requested full 64-bit ID against active entries.
     always_comb begin
-        match_found = 1'b0;
-        match_slot = '0;
-
         for (int unsigned i = 0; i < DEPTH; i++) begin
-            if (slot_valid[i] &&
-                order_ids[i] == req_order_id &&
-                !match_found) begin
-
-                match_found = 1'b1;
-                match_slot = ADDR_WIDTH'(i);
-            end
+            hit_vector[i] = slot_valid[i] && order_ids[i] == req_order_id;
         end
     end
 

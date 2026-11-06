@@ -39,18 +39,9 @@ module slot_allocator #(
 
     assign full = (used_count == COUNT_WIDTH'(DEPTH));
 
-    // Find the lowest-numbered available slot.
-    always_comb begin
-        free_found = 1'b0;
-        next_free_addr = '0;
-
-        for (int unsigned i = 0; i < DEPTH; i++) begin
-            if (!allocated[i] && !free_found) begin
-                free_found = 1'b1;
-                next_free_addr = ADDR_WIDTH'(i);
-            end
-        end
-    end
+    // Same deterministic lowest-free policy, with logarithmic selection depth.
+    priority_encoder #(.WIDTH(DEPTH)) select_free(
+        .bits_in(~allocated),.found(free_found),.index(next_free_addr));
 
     always_ff @(posedge clk) begin
         if (rst) begin
