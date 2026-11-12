@@ -38,6 +38,7 @@ module tb_order_book;
     trading_core #(
         .DEPTH(DEPTH)
     ) dut (
+        .depth_address(9'd0),.depth_quantity(),
         .clk,
         .rst,
 
@@ -99,25 +100,22 @@ module tb_order_book;
     endfunction
 
     function automatic bbo_t expected_bbo_value();
-        bbo_t value;
-
-        value = '0;
+        logic bv, av;
+        price_t bp, ap;
+        level_quantity_t bq, aq;
+        bv=0;av=0;bp=0;ap=0;bq=0;aq=0;
 
         for (int unsigned i = 0; i < PRICE_LEVELS; i++) begin
             if (expected_bids[i] != 0) begin
-                value.bid_valid = 1'b1;
-                value.bid_price = BASE_PRICE + i*TICK_SIZE;
-                value.bid_quantity = expected_bids[i];
+                bv=1; bp=BASE_PRICE+i*TICK_SIZE; bq=expected_bids[i];
             end
 
-            if (expected_asks[i] != 0 && !value.ask_valid) begin
-                value.ask_valid = 1'b1;
-                value.ask_price = BASE_PRICE + i*TICK_SIZE;
-                value.ask_quantity = expected_asks[i];
+            if (expected_asks[i] != 0 && !av) begin
+                av=1; ap=BASE_PRICE+i*TICK_SIZE; aq=expected_asks[i];
             end
         end
 
-        return value;
+        return {bv,bp,bq,av,ap,aq};
     endfunction
 
     task automatic reset_book;
@@ -437,6 +435,15 @@ module tb_order_book;
         // A removed order ID may be reused.
         add_order(42, SIDE_SELL, BASE_PRICE + TICK_SIZE, 9);
         delete_order(42, SIDE_SELL, BASE_PRICE + TICK_SIZE, 9);
+
+        // Zero is a valid order ID.
+        // IDs with identical low 48 bits must remain distinct.
+        add_order(64'h000100000000002a, SIDE_BUY, BASE_PRICE, 10);
+        add_order(64'h000200000000002a, SIDE_SELL, BASE_PRICE+TICK_SIZE, 20);
+        delete_order(64'h000100000000002a, SIDE_BUY, BASE_PRICE, 10);
+        delete_order(64'h000200000000002a, SIDE_SELL, BASE_PRICE+TICK_SIZE, 20);
+        add_order(64'hffffffffffffffff, SIDE_BUY, BASE_PRICE, 1);
+        delete_order(64'hffffffffffffffff, SIDE_BUY, BASE_PRICE, 1);
 
         // Zero is a valid order ID.
         add_order(0, SIDE_BUY, BASE_PRICE, 1);

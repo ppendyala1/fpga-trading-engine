@@ -15,7 +15,9 @@ module bbo_tracker (
     input logic result_ready,
 
     output logic result_error,
-    output trading_types_pkg::bbo_t result_bbo
+    output trading_types_pkg::bbo_t result_bbo,
+    input logic [8:0] depth_address,
+    output trading_types_pkg::level_quantity_t depth_quantity
 );
 
     import trading_types_pkg::*;
@@ -39,6 +41,9 @@ module bbo_tracker (
     // Register-backed aggregate quantity at each supported price.
     level_quantity_t bid_quantity [0:PRICE_LEVELS-1];
     level_quantity_t ask_quantity [0:PRICE_LEVELS-1];
+    // Updates and snapshots are serialized. Share the expensive 512x64 read
+    // mux rather than creating a second full aggregate-array read port.
+    logic [8:0] aggregate_address;
 
     bbo_t group_comb [0:GROUP_COUNT-1];
     bbo_t group_q [0:GROUP_COUNT-1];
@@ -57,6 +62,32 @@ module bbo_tracker (
     logic transaction_ok;
     logic update_ok;
     logic error_q;
+    logic [GROUP_SIZE-1:0] bid_mask[0:GROUP_COUNT-1],ask_mask[0:GROUP_COUNT-1];
+    logic [3:0] bid_reverse_index[0:GROUP_COUNT-1],ask_index[0:GROUP_COUNT-1];
+    logic [3:0] bid_index[0:GROUP_COUNT-1];
+    logic bid_found[0:GROUP_COUNT-1],ask_found[0:GROUP_COUNT-1];
+    logic [GROUP_COUNT-1:0] bid_groups,ask_groups;
+    logic [3:0] bid_group_reverse,ask_group_index,bid_group_index;
+    logic any_bid,any_ask;
+    assign aggregate_address = update_valid
+        ? {(anchor_record.side==SIDE_SELL),level_index} : depth_address;
+    assign depth_quantity = aggregate_address[8]
+        ? ask_quantity[aggregate_address[7:0]] : bid_quantity[aggregate_address[7:0]];
+
+    for(genvar g=0;g<GROUP_COUNT;g++) begin: select_group
+        for(genvar j=0;j<GROUP_SIZE;j++) begin: occupied
+            assign bid_mask[g][GROUP_SIZE-1-j]=(bid_quantity[g*GROUP_SIZE+j]!=0);
+            assign ask_mask[g][j]=(ask_quantity[g*GROUP_SIZE+j]!=0);
+        end
+        priority_encoder #(.WIDTH(GROUP_SIZE)) bids(.bits_in(bid_mask[g]),.found(bid_found[g]),.index(bid_reverse_index[g]));
+        priority_encoder #(.WIDTH(GROUP_SIZE)) asks(.bits_in(ask_mask[g]),.found(ask_found[g]),.index(ask_index[g]));
+        assign bid_index[g]=4'd15-bid_reverse_index[g];
+        assign bid_groups[GROUP_COUNT-1-g]=group_q[g].bid_valid;
+        assign ask_groups[g]=group_q[g].ask_valid;
+    end
+    priority_encoder #(.WIDTH(GROUP_COUNT)) top_bid(.bits_in(bid_groups),.found(any_bid),.index(bid_group_reverse));
+    priority_encoder #(.WIDTH(GROUP_COUNT)) top_ask(.bits_in(ask_groups),.found(any_ask),.index(ask_group_index));
+    assign bid_group_index=4'd15-bid_group_reverse;
 
     function automatic logic price_ok(input price_t price);
         if (price < BASE_PRICE)
@@ -106,9 +137,7 @@ module bbo_tracker (
             ? {32'd0, update_after.quantity}
             : 64'd0;
 
-        current_total = (anchor_record.side == SIDE_BUY)
-            ? bid_quantity[level_index]
-            : ask_quantity[level_index];
+        current_total = depth_quantity;
 
         // Extra bit detects aggregate overflow.
         next_total =
@@ -138,45 +167,20 @@ module bbo_tracker (
             !next_total[64];
     end
 
-    // First selection stage: find BBO within each group.
+    // First selection stage: encode occupancy, then use binary data selection.
+    // Avoid a priority mux cascade for every bit of every 64-bit quantity.
     always_comb begin
         for (int unsigned g = 0; g < GROUP_COUNT; g++) begin
             group_comb[g] = '0;
-
-            for (int unsigned j = 0; j < GROUP_SIZE; j++) begin
-                if (g * GROUP_SIZE + j < PRICE_LEVELS) begin
-
-                    // Ascending scan: last occupied bid wins.
-                    if (bid_quantity[g * GROUP_SIZE + j] != 0) begin
-                        group_comb[g].bid_valid = 1'b1;
-
-                        group_comb[g].bid_price =
-                            BASE_PRICE +
-                            price_t'(
-                                (g * GROUP_SIZE + j) * TICK_SIZE
-                            );
-
-                        group_comb[g].bid_quantity =
-                            bid_quantity[g * GROUP_SIZE + j];
-                    end
-
-                    // Ascending scan: first occupied ask wins.
-                    if (
-                        ask_quantity[g * GROUP_SIZE + j] != 0 &&
-                        !group_comb[g].ask_valid
-                    ) begin
-                        group_comb[g].ask_valid = 1'b1;
-
-                        group_comb[g].ask_price =
-                            BASE_PRICE +
-                            price_t'(
-                                (g * GROUP_SIZE + j) * TICK_SIZE
-                            );
-
-                        group_comb[g].ask_quantity =
-                            ask_quantity[g * GROUP_SIZE + j];
-                    end
-                end
+            if(bid_found[g]) begin
+                group_comb[g].bid_valid=1;
+                group_comb[g].bid_price=BASE_PRICE+price_t'((g*GROUP_SIZE+bid_index[g])*TICK_SIZE);
+                group_comb[g].bid_quantity=bid_quantity[g*GROUP_SIZE+bid_index[g]];
+            end
+            if(ask_found[g]) begin
+                group_comb[g].ask_valid=1;
+                group_comb[g].ask_price=BASE_PRICE+price_t'((g*GROUP_SIZE+ask_index[g])*TICK_SIZE);
+                group_comb[g].ask_quantity=ask_quantity[g*GROUP_SIZE+ask_index[g]];
             end
         end
     end
@@ -185,21 +189,15 @@ module bbo_tracker (
     always_comb begin
         merged_bbo = '0;
 
-        for (int unsigned g = 0; g < GROUP_COUNT; g++) begin
-            if (group_q[g].bid_valid) begin
-                merged_bbo.bid_valid = 1'b1;
-                merged_bbo.bid_price = group_q[g].bid_price;
-                merged_bbo.bid_quantity = group_q[g].bid_quantity;
-            end
-
-            if (
-                group_q[g].ask_valid &&
-                !merged_bbo.ask_valid
-            ) begin
-                merged_bbo.ask_valid = 1'b1;
-                merged_bbo.ask_price = group_q[g].ask_price;
-                merged_bbo.ask_quantity = group_q[g].ask_quantity;
-            end
+        if(any_bid) begin
+            merged_bbo.bid_valid=1;
+            merged_bbo.bid_price=group_q[bid_group_index].bid_price;
+            merged_bbo.bid_quantity=group_q[bid_group_index].bid_quantity;
+        end
+        if(any_ask) begin
+            merged_bbo.ask_valid=1;
+            merged_bbo.ask_price=group_q[ask_group_index].ask_price;
+            merged_bbo.ask_quantity=group_q[ask_group_index].ask_quantity;
         end
     end
 

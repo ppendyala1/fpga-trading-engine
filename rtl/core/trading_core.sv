@@ -20,7 +20,9 @@ module trading_core #(
     output trading_types_pkg::bbo_t result_bbo,
     output logic result_bbo_valid,
 
-    output logic faulted
+    output logic faulted,
+    input logic [8:0] depth_address,
+    output trading_types_pkg::level_quantity_t depth_quantity
 );
 
     import trading_types_pkg::*;
@@ -84,6 +86,8 @@ module trading_core #(
     );
 
     bbo_tracker bbo_inst (
+        .depth_address,
+        .depth_quantity,
         .clk,
         .rst,
 
