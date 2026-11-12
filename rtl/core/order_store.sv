@@ -29,6 +29,9 @@ module order_store #(
     logic [ADDR_WIDTH-1:0] clear_addr;
 
     logic [DATA_WIDTH-1:0] ram_read_q;
+    logic ram_write_en;
+    logic [ADDR_WIDTH-1:0] ram_write_addr;
+    logic [DATA_WIDTH-1:0] ram_write_data;
 
     // Forward the new record when reading and writing the same slot.
     logic forward_valid_q;
@@ -59,15 +62,15 @@ module order_store #(
         end
     end
 
-    // Memory write port.
+    // Explicitly multiplex initialization and normal writes BEFORE the RAM.
+    // Two differently addressed array assignments made Vivado 2022.2 infer
+    // a multi-write LUTRAM despite the block-RAM hint. There is one write port.
+    assign ram_write_en = !rst && (clearing || write_en);
+    assign ram_write_addr = clearing ? clear_addr : write_addr;
+    assign ram_write_data = clearing ? '0 : write_data;
     always_ff @(posedge clk) begin
-        if (!rst) begin
-            if (clearing) begin
-                memory[clear_addr] <= '0;
-            end else if (write_en) begin
-                memory[write_addr] <= write_data;
-            end
-        end
+        if (ram_write_en)
+            memory[ram_write_addr] <= ram_write_data;
     end
 
     // Memory read port.
